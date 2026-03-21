@@ -1,0 +1,9 @@
+torch==2.6.0
+transformers==4.50.3
+datasets==4.1.1
+evaluate==0.4.3
+accelerate==1.4.0
+rouge-score==0.1.2
+absl-py==2.1.0
+python-dotenv==1.0.1
+numpy==1.26.4
