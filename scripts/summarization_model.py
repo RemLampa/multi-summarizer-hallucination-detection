@@ -66,6 +66,10 @@ from transformers import (
     Seq2SeqTrainingArguments,
 )
 from transformers.trainer_utils import EvalPrediction, get_last_checkpoint
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import spacy
+import matplotlib.pyplot as plt
 
 # %% [markdown]
 # ## Initialization and Setup
@@ -253,7 +257,7 @@ else:
 
 
 # %% [markdown]
-# ### Dataset Summary
+# ## Dataset Summary
 # %%
 print(f"Train dataset size: {len(train_tokenized)}")
 print(f"Validation dataset size: {len(val_tokenized)}")
@@ -268,9 +272,11 @@ print(f"Example tokenized input ids: {train_tokenized[0]['input_ids'][:20]}...")
 print(f"Example tokenized target ids: {train_tokenized[0]['labels'][:20]}...")
 
 # %% [markdown]
-# ### Exploratory Data Analysis
+# ## Exploratory Data Analysis
+
+# ### Input and Summary Length Analysis
 # %%
-# Analyze the distribution of input document lengths and summary lengths
+# Token counts
 input_lengths = [
     len(tokenizer.encode(doc, truncation=False)) for doc in train_raw["document"]
 ]
@@ -279,8 +285,127 @@ summary_lengths = [
     for summary in train_raw["summary"]
 ]
 
-print(f"Average input document length (in tokens): {np.mean(input_lengths):.2f}")
-print(f"Average summary length (in tokens): {np.mean(summary_lengths):.2f}")
+print("\n")
+print(f"Average number of tokens in examples: {np.mean(input_lengths):.2f}")
+print(f"Maximum number of tokens in examples: {max(input_lengths)}")
+print(f"Minimum number of tokens in examples: {min(input_lengths)}")
+print(f"Compression ratio (input tokens / summary tokens): {np.mean(input_lengths) / np.mean(summary_lengths):.2f}")
+
+print("\n")
+print(f"Average number of tokens in summaries: {np.mean(summary_lengths):.2f}")
+print(f"Maximum number of tokens in summaries: {max(summary_lengths)}")
+print(f"Minimum number of tokens in summaries: {min(summary_lengths)}")
+
+# Document count per example (since each example can contain multiple documents)
+split_docs = [doc.split("|||||") for doc in train_raw["document"]]
+
+doc_counts = [len(docs) for docs in split_docs]
+print("\n")
+print(f"Average number of documents per example: {np.mean(doc_counts):.2f}")
+print(f"Maximum number of documents in a single example: {max(doc_counts)}")
+print(f"Minimum number of documents in a single example: {min(doc_counts)}")
+print(f"Median number of documents per example: {np.median(doc_counts)}")
+
+# Token counts for individual documents within each example (after splitting by "|||||")
+multi_doc_input_lengths = [
+    len(tokenizer.encode(doc, truncation=False)) for doc in [doc for docs in split_docs for doc in docs]
+]
+print("\n")
+print(f"Average number of tokens in individual documents: {np.mean(multi_doc_input_lengths):.2f}")
+print(f"Maximum number of tokens in individual documents: {max(multi_doc_input_lengths)}")
+print(f"Minimum number of tokens in individual documents: {min(multi_doc_input_lengths)}")
+
+# %% [markdown]
+# ### Similarity analysis
+# %%
+def compute_tfidf_similarity(docs: List[str]) -> np.ndarray:
+    """Computes the TF-IDF cosine similarity matrix for a list of documents."""
+    vectorizer = TfidfVectorizer(stop_words="english")
+    tfidf_matrix = vectorizer.fit_transform(docs)
+    similarity_matrix = cosine_similarity(tfidf_matrix)
+    return similarity_matrix
+
+# Compute similarity for documents in each example
+similarity_matrices = []
+for docs in split_docs:
+    if len(docs) > 1:
+        similarity_matrix = compute_tfidf_similarity(docs)
+        similarity_matrices.append(similarity_matrix)
+
+# Analyze similarity matrices
+avg_similarity = np.mean([np.mean(similarity_matrix) for similarity_matrix in similarity_matrices])
+print("\n")
+print(f"Average TF-IDF cosine similarity between documents in the same example: {avg_similarity:.4f}")
+
+# Compute similarity between summaries and their corresponding examples
+summary_similarity_scores = []
+for example, summary in zip(train_raw["document"], train_raw["summary"]):
+    similarity_matrix = compute_tfidf_similarity([example, summary])
+    summary_similarity_scores.append(similarity_matrix[0, 1])
+avg_summary_similarity = np.mean(summary_similarity_scores)
+print(f"Average TF-IDF cosine similarity between summaries and their corresponding examples: {avg_summary_similarity:.4f}")
+# n-gram overlap analysis
+def ngram_overlap(doc: str, summary: str, n: int = 2) -> float:
+    """Computes the n-gram overlap between a document and its summary."""
+    doc_ngrams = set(zip(*[doc.split()[i:] for i in range(n)]))
+    summary_ngrams = set(zip(*[summary.split()[i:] for i in range(n)]))
+    if not doc_ngrams or not summary_ngrams:
+        return 0.0
+    overlap = doc_ngrams.intersection(summary_ngrams)
+    return len(overlap) / len(summary_ngrams)
+
+ngram_overlap_scores = []
+for example, summary in zip(train_raw["document"], train_raw["summary"]):
+    score = ngram_overlap(example, summary, n=2)
+    ngram_overlap_scores.append(score)
+avg_ngram_overlap = np.mean(ngram_overlap_scores)
+print(f"Average bigram overlap between documents and their summaries: {avg_ngram_overlap:.4f}")
+
+# %% [markdown]
+# ### Linguistic analysis
+# %%
+# Analyze the distribution of part-of-speech tags in the input documents and summaries
+nlp = spacy.load("en_core_web_sm")
+pos_counts = {"input": {}, "multi_doc": {}, "summary": {}}
+
+for doc_text in train_raw["document"]:
+    doc = nlp(doc_text)
+    for token in doc:
+        pos = token.pos_
+        pos_counts["input"][pos] = pos_counts["input"].get(pos, 0) + 1
+
+for docs in split_docs:
+    for doc_text in docs:
+        doc = nlp(doc_text)
+        for token in doc:
+            pos = token.pos_
+            pos_counts["multi_doc"][pos] = pos_counts["multi_doc"].get(pos, 0) + 1
+
+for summary_text in train_raw["summary"]:
+    summary = nlp(summary_text)
+    for token in summary:
+        pos = token.pos_
+        pos_counts["summary"][pos] = pos_counts["summary"].get(pos, 0) + 1
+
+print("Part-of-speech tag distribution in input documents:")
+for pos, count in pos_counts["input"].items():
+    print(f"{pos}: {count}")
+# Plot the POS distribution for input documents, multi-documents, and summaries
+
+def plot_pos_distribution(pos_counts: dict[str, int], title: str) -> None:
+    pos_tags = list(pos_counts.keys())
+    counts = list(pos_counts.values())
+    plt.figure(figsize=(12, 6))
+    plt.bar(pos_tags, counts)
+    plt.title(title)
+    plt.xlabel("Part-of-Speech Tag")
+    plt.ylabel("Count")
+    plt.xticks(rotation=45)
+    plt.show()
+
+plot_pos_distribution(pos_counts["input"], "POS Tag Distribution in Input Documents")
+plot_pos_distribution(pos_counts["multi_doc"], "POS Tag Distribution in Individual Documents")
+plot_pos_distribution(pos_counts["summary"], "POS Tag Distribution in Summaries")
 
 # %% [markdown]
 # ## Model Definition
