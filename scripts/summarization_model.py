@@ -52,7 +52,7 @@
 # ### Import necessary libraries
 # %%
 import re
-from typing import List
+from typing import List, cast
 
 import evaluate
 import numpy as np
@@ -60,16 +60,22 @@ import torch
 from datasets import load_dataset
 from transformers import (
     AutoModelForSeq2SeqLM,
+    AutoConfig,
     AutoTokenizer,
+    BatchEncoding,
+    GenerationConfig,
     DataCollatorForSeq2Seq,
+    BartForConditionalGeneration,
     Seq2SeqTrainer,
     Seq2SeqTrainingArguments,
 )
 from transformers.trainer_utils import EvalPrediction, get_last_checkpoint
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from collections import Counter
 import spacy
 import matplotlib.pyplot as plt
+from tqdm import tqdm # for progress bars during EDA
 
 # %% [markdown]
 # ## Initialization and Setup
@@ -84,6 +90,13 @@ import matplotlib.pyplot as plt
 # In production mode, we will use the full dataset for training and evaluation.
 DEV_MODE = True
 
+MODEL_NAME = "sshleifer/distilbart-cnn-12-6"
+MAX_INPUT_LENGTH = 640
+MAX_TARGET_SUMMARY_LENGTH = 256
+FORCED_BOS_TOKEN_ID = 0
+# for dislbart models, tying input and output word embeddings can save memory without hurting performance
+TIE_WORD_EMBEDDINGS = True
+
 # Set random seeds for reproducibility
 def set_seed(seed):
     np.random.seed(seed)
@@ -93,13 +106,6 @@ def set_seed(seed):
 
 SEED = 42
 set_seed(SEED)
-
-
-MODEL_NAME = "sshleifer/distilbart-cnn-12-6"
-MAX_INPUT_LENGTH = 640
-MAX_TARGET_SUMMARY_LENGTH = 256
-FORCED_BOS_TOKEN_ID = 0
-TIE_WORD_EMBEDDINGS = False
 
 if DEV_MODE:
     MODEL_OUTPUT_DIR = "../models/multi_doc_summarizer_dev"
@@ -123,10 +129,23 @@ if torch.backends.mps.is_available():
     device = "mps"
 
 print(f"Using device: {device}")
+# %% [markdown]
+# ### Clean up existing model output directory
+#
+# **!!!!!!DANGER!!!!!!**
+#
+# Uncomment the following code block to delete the existing model output
+# directory before training.
+# %%
+# import os
+
+# if os.path.exists(MODEL_OUTPUT_DIR):
+#     import shutil
+
+#     shutil.rmtree(MODEL_OUTPUT_DIR)
 
 # %% [markdown]
 # ## Dataset Preparation
-
 
 # %% [markdown]
 # ### Data Processor Class
@@ -174,7 +193,7 @@ class MultiNewsDataProcessor:
 
         model_inputs = self.tokenizer(
             sources,
-            max_length=self.max_input_length,
+            max_length=MAX_INPUT_LENGTH,
             padding=False,
             truncation=True,
         )
@@ -278,10 +297,10 @@ print(f"Example tokenized target ids: {train_tokenized[0]['labels'][:20]}...")
 # %%
 # Token counts
 input_lengths = [
-    len(tokenizer.encode(doc, truncation=False)) for doc in train_raw["document"]
+    len(tokenizer.encode(doc, truncation=True, max_length=MAX_INPUT_LENGTH)) for doc in train_raw["document"]
 ]
 summary_lengths = [
-    len(tokenizer.encode(summary, truncation=False))
+    len(tokenizer.encode(summary, truncation=True, max_length=MAX_TARGET_SUMMARY_LENGTH))
     for summary in train_raw["summary"]
 ]
 
@@ -308,7 +327,8 @@ print(f"Median number of documents per example: {np.median(doc_counts)}")
 
 # Token counts for individual documents within each example (after splitting by "|||||")
 multi_doc_input_lengths = [
-    len(tokenizer.encode(doc, truncation=False)) for doc in [doc for docs in split_docs for doc in docs]
+    len(tokenizer.encode(doc, truncation=True, max_length=MAX_INPUT_LENGTH))
+    for doc in [doc for docs in split_docs for doc in docs]
 ]
 print("\n")
 print(f"Average number of tokens in individual documents: {np.mean(multi_doc_input_lengths):.2f}")
@@ -364,48 +384,51 @@ print(f"Average bigram overlap between documents and their summaries: {avg_ngram
 # %% [markdown]
 # ### Linguistic analysis
 # %%
-# Analyze the distribution of part-of-speech tags in the input documents and summaries
+# Analyze the distribution of part-of-speech tags in the input documents
 nlp = spacy.load("en_core_web_sm")
-pos_counts = {"input": {}, "multi_doc": {}, "summary": {}}
 
-for doc_text in train_raw["document"]:
-    doc = nlp(doc_text)
-    for token in doc:
-        pos = token.pos_
-        pos_counts["input"][pos] = pos_counts["input"].get(pos, 0) + 1
+def iter_chunks(text: str, chunk_chars: int = 200_000):
+    for i in range(0, len(text), chunk_chars):
+        yield text[i:i + chunk_chars]
 
-for docs in split_docs:
-    for doc_text in docs:
-        doc = nlp(doc_text)
+# To avoid memory issues with large documents, we will process the input documents in chunks.
+def count_pos_from_split_docs(split_docs, chunk_size: int = 200_000, batch_size: int = 32) -> Counter:
+    counts = Counter()
+
+    chunk_stream = (
+        chunk
+        for doc in split_docs
+        for doc_text in docs
+        for chunk in iter_chunks(doc_text.strip(), chunk_size)
+        if chunk
+    )
+
+    for doc in nlp.pipe(chunk_stream, batch_size=batch_size):
         for token in doc:
-            pos = token.pos_
-            pos_counts["multi_doc"][pos] = pos_counts["multi_doc"].get(pos, 0) + 1
+            counts[token.pos_] += 1
 
-for summary_text in train_raw["summary"]:
-    summary = nlp(summary_text)
-    for token in summary:
-        pos = token.pos_
-        pos_counts["summary"][pos] = pos_counts["summary"].get(pos, 0) + 1
+    return counts
+
+pos_counts = count_pos_from_split_docs(split_docs)
 
 print("Part-of-speech tag distribution in input documents:")
-for pos, count in pos_counts["input"].items():
-    print(f"{pos}: {count}")
-# Plot the POS distribution for input documents, multi-documents, and summaries
+for pos_tag, count in pos_counts.items():
+    print(f"{pos_tag}: {count}")
 
 def plot_pos_distribution(pos_counts: dict[str, int], title: str) -> None:
-    pos_tags = list(pos_counts.keys())
-    counts = list(pos_counts.values())
-    plt.figure(figsize=(12, 6))
-    plt.bar(pos_tags, counts)
+    plt.figure(figsize=(10, 6))
+    plt.bar(
+        list(pos_counts.keys()),
+        list(pos_counts.values())
+    )
     plt.title(title)
-    plt.xlabel("Part-of-Speech Tag")
+    plt.xlabel("POS Tag")
     plt.ylabel("Count")
     plt.xticks(rotation=45)
+    plt.tight_layout()
     plt.show()
 
-plot_pos_distribution(pos_counts["input"], "POS Tag Distribution in Input Documents")
-plot_pos_distribution(pos_counts["multi_doc"], "POS Tag Distribution in Individual Documents")
-plot_pos_distribution(pos_counts["summary"], "POS Tag Distribution in Summaries")
+plot_pos_distribution(pos_counts, "POS Tag Distribution in Input Documents")
 
 # %% [markdown]
 # ## Model Definition
@@ -417,18 +440,25 @@ class MultiDocumentSummarizer:
     """
 
     @staticmethod
-    def _apply_stable_model_config(model: AutoModelForSeq2SeqLM) -> None:
+    def _apply_stable_model_config(model: BartForConditionalGeneration) -> None:
         """Apply config values that must remain stable across all checkpoints."""
+        if model.generation_config is None:
+            model.generation_config = GenerationConfig.from_model_config(model.config)
+
         model.generation_config.forced_bos_token_id = FORCED_BOS_TOKEN_ID
-        model.config.tie_word_embeddings = TIE_WORD_EMBEDDINGS
 
     def __init__(self, model_name: str = MODEL_NAME):
         """Initializes the multi-document summarization model."""
         self.model_name = model_name
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=HF_CACHE)
+        cfg = AutoConfig.from_pretrained(model_name, cache_dir=HF_CACHE)
+        cfg.tie_word_embeddings = TIE_WORD_EMBEDDINGS
         self.model = AutoModelForSeq2SeqLM.from_pretrained(
-            model_name, cache_dir=HF_CACHE
+            model_name,
+            config=cfg,
+            cache_dir=HF_CACHE
         ).to(device)
+        self.model = cast(BartForConditionalGeneration, self.model)
         self._apply_stable_model_config(self.model)
         self.rouge_metric = evaluate.load("rouge")
 
@@ -560,17 +590,24 @@ class MultiDocumentSummarizer:
             min_length (int): The minimum length of the generated summary. Defaults to 30.
             num_beams (int): The number of beams to use for beam search during generation. Defaults to 4.
         """
-        inputs = self.tokenizer(
+        encoding: BatchEncoding = self.tokenizer(
             doc,
             max_length=MAX_INPUT_LENGTH,
             truncation=True,
             return_tensors="pt",
         ).to(device)
 
+        # Move input tensors to the same device as the model
+        model_inputs: dict[str, torch.Tensor] = {k: v.to(device) for k, v in encoding.items()}
+
+        input_ids = model_inputs["input_ids"]
+        attention_mask = model_inputs["attention_mask"]
+
         self.model.eval()
         with torch.no_grad():
             summary_ids = self.model.generate(
-                **inputs,  # unpack input_ids and attention_mask
+                input_ids=input_ids,
+                attention_mask=attention_mask,
                 max_new_tokens=max_new_tokens,
                 min_new_tokens=min_new_tokens,
                 num_beams=num_beams,
@@ -587,7 +624,7 @@ class MultiDocumentSummarizer:
         num_beams: int = 4,
     ) -> List[str]:
         """Generates summaries for a batch of input documents."""
-        inputs = self.tokenizer(
+        encoding: BatchEncoding = self.tokenizer(
             docs,
             max_length=MAX_INPUT_LENGTH,
             padding=True,
@@ -595,15 +632,24 @@ class MultiDocumentSummarizer:
             return_tensors="pt",
         ).to(device)
 
-        summary_ids = self.model.generate(
-            **inputs,
-            max_new_tokens=max_new_tokens,
-            min_new_tokens=min_new_tokens,
-            num_beams=num_beams,
-            early_stopping=True,
-        )
+        # Move input tensors to the same device as the model
+        model_inputs: dict[str, torch.Tensor] = {k: v.to(device) for k, v in encoding.items()}
 
-        return self.tokenizer.batch_decode(summary_ids, skip_special_tokens=True)
+        input_ids = model_inputs["input_ids"]
+        attention_mask = model_inputs["attention_mask"]
+
+        self.model.eval()
+        with torch.no_grad():
+            summary_ids = self.model.generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                max_new_tokens=max_new_tokens,
+                min_new_tokens=min_new_tokens,
+                num_beams=num_beams,
+                early_stopping=True,
+            )
+
+            return self.tokenizer.batch_decode(summary_ids, skip_special_tokens=True)
 
     def generate_multi_doc_summary(
         self,
@@ -636,8 +682,10 @@ class MultiDocumentSummarizer:
     @classmethod
     def load(cls, model_directory: str = MODEL_OUTPUT_DIR):
         """Loads a fine-tuned model and tokenizer from the specified directory."""
+        cfg = AutoConfig.from_pretrained(model_directory, cache_dir=HF_CACHE)
+        cfg.tie_word_embeddings = TIE_WORD_EMBEDDINGS
         model = AutoModelForSeq2SeqLM.from_pretrained(
-            model_directory, cache_dir=HF_CACHE
+            model_directory, config=cfg, cache_dir=HF_CACHE
         ).to(device)
         cls._apply_stable_model_config(model)
         tokenizer = AutoTokenizer.from_pretrained(model_directory, cache_dir=HF_CACHE)
