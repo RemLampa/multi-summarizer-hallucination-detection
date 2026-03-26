@@ -34,48 +34,47 @@
 # %% [markdown]
 # ### Install required libraries (for Colab only)
 # Uncomment if running in a Colab environment.
-# %%
-%pip install -q --upgrade pip setuptools wheel
-# Keep Colab-compatible torch stack
-%pip install -q \
-    torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0 \
-    --index-url https://download.pytorch.org/whl/cu128
-%pip install -q \
-    transformers==4.50.3 \
-    datasets==4.1.1 \
-    evaluate==0.4.3 \
-    accelerate==1.4.0 \
-    rouge-score==0.1.2 \
-    absl-py==2.1.0
+# # %%
+# %pip install -q --upgrade pip setuptools wheel
+# # Keep Colab-compatible torch stack
+# %pip install -q \
+#     torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0 \
+#     --index-url https://download.pytorch.org/whl/cu128
+# %pip install -q \
+#     transformers==4.50.3 \
+#     datasets==4.1.1 \
+#     evaluate==0.4.3 \
+#     accelerate==1.4.0 \
+#     rouge-score==0.1.2 \
+#     absl-py==2.1.0
 
 # %% [markdown]
 # ### Import necessary libraries
 # %%
 import re
+from collections import Counter
 from typing import List, cast
 
 import evaluate
+import matplotlib.pyplot as plt
 import numpy as np
+import spacy
 import torch
 from datasets import load_dataset
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 from transformers import (
-    AutoModelForSeq2SeqLM,
     AutoConfig,
+    AutoModelForSeq2SeqLM,
     AutoTokenizer,
-    BatchEncoding,
-    GenerationConfig,
-    DataCollatorForSeq2Seq,
     BartForConditionalGeneration,
+    BatchEncoding,
+    DataCollatorForSeq2Seq,
+    GenerationConfig,
     Seq2SeqTrainer,
     Seq2SeqTrainingArguments,
 )
 from transformers.trainer_utils import EvalPrediction, get_last_checkpoint
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-from collections import Counter
-import spacy
-import matplotlib.pyplot as plt
-from tqdm import tqdm # for progress bars during EDA
 
 # %% [markdown]
 # ## Initialization and Setup
@@ -97,6 +96,7 @@ FORCED_BOS_TOKEN_ID = 0
 # for dislbart models, tying input and output word embeddings can save memory without hurting performance
 TIE_WORD_EMBEDDINGS = True
 
+
 # Set random seeds for reproducibility
 def set_seed(seed):
     np.random.seed(seed)
@@ -104,15 +104,17 @@ def set_seed(seed):
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
 
+
 SEED = 42
 set_seed(SEED)
 
 if DEV_MODE:
-    MODEL_OUTPUT_DIR = "../models/multi_doc_summarizer_dev"
+    MODEL_OUTPUT_DIR = "../models/multi_doc_summarizer_dev_v1"
     HF_CACHE = "../hf_cache"
 else:
     # Production mode will be using Colab, save to Google Drive instead
     from google.colab import drive
+
     drive.mount("/content/drive")
 
     BASE = "/content/drive/MyDrive/rai8001"
@@ -146,6 +148,7 @@ print(f"Using device: {device}")
 
 # %% [markdown]
 # ## Dataset Preparation
+
 
 # %% [markdown]
 # ### Data Processor Class
@@ -232,8 +235,9 @@ class MultiNewsDataProcessor:
 
         if isinstance(split, str):
             # If only a single split is specified, load and preprocess that split
-            raw_dataset = load_dataset(self.dataset_name, split=split,
-                cache_dir=HF_CACHE)
+            raw_dataset = load_dataset(
+                self.dataset_name, split=split, cache_dir=HF_CACHE
+            )
             base_cols = raw_dataset.column_names
             tokenized_dataset = raw_dataset.map(
                 self._preprocess_batch, batched=True, remove_columns=base_cols
@@ -297,10 +301,13 @@ print(f"Example tokenized target ids: {train_tokenized[0]['labels'][:20]}...")
 # %%
 # Token counts
 input_lengths = [
-    len(tokenizer.encode(doc, truncation=True, max_length=MAX_INPUT_LENGTH)) for doc in train_raw["document"]
+    len(tokenizer.encode(doc, truncation=True, max_length=MAX_INPUT_LENGTH))
+    for doc in train_raw["document"]
 ]
 summary_lengths = [
-    len(tokenizer.encode(summary, truncation=True, max_length=MAX_TARGET_SUMMARY_LENGTH))
+    len(
+        tokenizer.encode(summary, truncation=True, max_length=MAX_TARGET_SUMMARY_LENGTH)
+    )
     for summary in train_raw["summary"]
 ]
 
@@ -308,7 +315,9 @@ print("\n")
 print(f"Average number of tokens in examples: {np.mean(input_lengths):.2f}")
 print(f"Maximum number of tokens in examples: {max(input_lengths)}")
 print(f"Minimum number of tokens in examples: {min(input_lengths)}")
-print(f"Compression ratio (input tokens / summary tokens): {np.mean(input_lengths) / np.mean(summary_lengths):.2f}")
+print(
+    f"Compression ratio (input tokens / summary tokens): {np.mean(input_lengths) / np.mean(summary_lengths):.2f}"
+)
 
 print("\n")
 print(f"Average number of tokens in summaries: {np.mean(summary_lengths):.2f}")
@@ -331,9 +340,16 @@ multi_doc_input_lengths = [
     for doc in [doc for docs in split_docs for doc in docs]
 ]
 print("\n")
-print(f"Average number of tokens in individual documents: {np.mean(multi_doc_input_lengths):.2f}")
-print(f"Maximum number of tokens in individual documents: {max(multi_doc_input_lengths)}")
-print(f"Minimum number of tokens in individual documents: {min(multi_doc_input_lengths)}")
+print(
+    f"Average number of tokens in individual documents: {np.mean(multi_doc_input_lengths):.2f}"
+)
+print(
+    f"Maximum number of tokens in individual documents: {max(multi_doc_input_lengths)}"
+)
+print(
+    f"Minimum number of tokens in individual documents: {min(multi_doc_input_lengths)}"
+)
+
 
 # %% [markdown]
 # ### Similarity analysis
@@ -345,6 +361,7 @@ def compute_tfidf_similarity(docs: List[str]) -> np.ndarray:
     similarity_matrix = cosine_similarity(tfidf_matrix)
     return similarity_matrix
 
+
 # Compute similarity for documents in each example
 similarity_matrices = []
 for docs in split_docs:
@@ -353,9 +370,13 @@ for docs in split_docs:
         similarity_matrices.append(similarity_matrix)
 
 # Analyze similarity matrices
-avg_similarity = np.mean([np.mean(similarity_matrix) for similarity_matrix in similarity_matrices])
+avg_similarity = np.mean(
+    [np.mean(similarity_matrix) for similarity_matrix in similarity_matrices]
+)
 print("\n")
-print(f"Average TF-IDF cosine similarity between documents in the same example: {avg_similarity:.4f}")
+print(
+    f"Average TF-IDF cosine similarity between documents in the same example: {avg_similarity:.4f}"
+)
 
 # Compute similarity between summaries and their corresponding examples
 summary_similarity_scores = []
@@ -363,7 +384,11 @@ for example, summary in zip(train_raw["document"], train_raw["summary"]):
     similarity_matrix = compute_tfidf_similarity([example, summary])
     summary_similarity_scores.append(similarity_matrix[0, 1])
 avg_summary_similarity = np.mean(summary_similarity_scores)
-print(f"Average TF-IDF cosine similarity between summaries and their corresponding examples: {avg_summary_similarity:.4f}")
+print(
+    f"Average TF-IDF cosine similarity between summaries and their corresponding examples: {avg_summary_similarity:.4f}"
+)
+
+
 # n-gram overlap analysis
 def ngram_overlap(doc: str, summary: str, n: int = 2) -> float:
     """Computes the n-gram overlap between a document and its summary."""
@@ -374,12 +399,15 @@ def ngram_overlap(doc: str, summary: str, n: int = 2) -> float:
     overlap = doc_ngrams.intersection(summary_ngrams)
     return len(overlap) / len(summary_ngrams)
 
+
 ngram_overlap_scores = []
 for example, summary in zip(train_raw["document"], train_raw["summary"]):
     score = ngram_overlap(example, summary, n=2)
     ngram_overlap_scores.append(score)
 avg_ngram_overlap = np.mean(ngram_overlap_scores)
-print(f"Average bigram overlap between documents and their summaries: {avg_ngram_overlap:.4f}")
+print(
+    f"Average bigram overlap between documents and their summaries: {avg_ngram_overlap:.4f}"
+)
 
 # %% [markdown]
 # ### Linguistic analysis
@@ -387,12 +415,16 @@ print(f"Average bigram overlap between documents and their summaries: {avg_ngram
 # Analyze the distribution of part-of-speech tags in the input documents
 nlp = spacy.load("en_core_web_sm")
 
+
 def iter_chunks(text: str, chunk_chars: int = 200_000):
     for i in range(0, len(text), chunk_chars):
-        yield text[i:i + chunk_chars]
+        yield text[i : i + chunk_chars]
+
 
 # To avoid memory issues with large documents, we will process the input documents in chunks.
-def count_pos_from_split_docs(split_docs, chunk_size: int = 200_000, batch_size: int = 32) -> Counter:
+def count_pos_from_split_docs(
+    split_docs, chunk_size: int = 200_000, batch_size: int = 32
+) -> Counter:
     counts = Counter()
 
     chunk_stream = (
@@ -409,18 +441,17 @@ def count_pos_from_split_docs(split_docs, chunk_size: int = 200_000, batch_size:
 
     return counts
 
+
 pos_counts = count_pos_from_split_docs(split_docs)
 
 print("Part-of-speech tag distribution in input documents:")
 for pos_tag, count in pos_counts.items():
     print(f"{pos_tag}: {count}")
 
+
 def plot_pos_distribution(pos_counts: dict[str, int], title: str) -> None:
     plt.figure(figsize=(10, 6))
-    plt.bar(
-        list(pos_counts.keys()),
-        list(pos_counts.values())
-    )
+    plt.bar(list(pos_counts.keys()), list(pos_counts.values()))
     plt.title(title)
     plt.xlabel("POS Tag")
     plt.ylabel("Count")
@@ -428,7 +459,9 @@ def plot_pos_distribution(pos_counts: dict[str, int], title: str) -> None:
     plt.tight_layout()
     plt.show()
 
+
 plot_pos_distribution(pos_counts, "POS Tag Distribution in Input Documents")
+
 
 # %% [markdown]
 # ## Model Definition
@@ -454,9 +487,7 @@ class MultiDocumentSummarizer:
         cfg = AutoConfig.from_pretrained(model_name, cache_dir=HF_CACHE)
         cfg.tie_word_embeddings = TIE_WORD_EMBEDDINGS
         self.model = AutoModelForSeq2SeqLM.from_pretrained(
-            model_name,
-            config=cfg,
-            cache_dir=HF_CACHE
+            model_name, config=cfg, cache_dir=HF_CACHE
         ).to(device)
         self.model = cast(BartForConditionalGeneration, self.model)
         self._apply_stable_model_config(self.model)
@@ -598,7 +629,9 @@ class MultiDocumentSummarizer:
         ).to(device)
 
         # Move input tensors to the same device as the model
-        model_inputs: dict[str, torch.Tensor] = {k: v.to(device) for k, v in encoding.items()}
+        model_inputs: dict[str, torch.Tensor] = {
+            k: v.to(device) for k, v in encoding.items()
+        }
 
         input_ids = model_inputs["input_ids"]
         attention_mask = model_inputs["attention_mask"]
@@ -633,7 +666,9 @@ class MultiDocumentSummarizer:
         ).to(device)
 
         # Move input tensors to the same device as the model
-        model_inputs: dict[str, torch.Tensor] = {k: v.to(device) for k, v in encoding.items()}
+        model_inputs: dict[str, torch.Tensor] = {
+            k: v.to(device) for k, v in encoding.items()
+        }
 
         input_ids = model_inputs["input_ids"]
         attention_mask = model_inputs["attention_mask"]

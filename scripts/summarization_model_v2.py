@@ -112,13 +112,16 @@ SEED = 42
 set_seed(SEED)
 
 if DEV_MODE:
-    MODEL_OUTPUT_DIR = "../models/multi_doc_summarizer_dev"
+    MODEL_OUTPUT_DIR = "../models/multi_doc_summarizer_dev_v2"
     HF_CACHE = "../hf_cache"
 else:
     # Production mode will be using Colab, save to Google Drive instead
     from google.colab import drive
 
-    drive.mount("/content/drive")
+    try:
+        drive.mount("/content/drive", force_remount=True)
+    except Exception as e:
+        print(f"Error mounting Google Drive: {e}")
 
     BASE = "/content/drive/MyDrive/rai8001"
     MODEL_OUTPUT_DIR = f"{BASE}/models/multi_doc_summarizer"
@@ -772,13 +775,12 @@ class MultiDocumentSummarizer:
             token_budget=MAX_INPUT_LENGTH,
         )
 
-        summarizer = cls(
-            tokenizer=tokenizer,
-            context_builder=context_builder,
-        ).__new__(cls)  # Create an uninitialized instance
-
+        summarizer = cls.__new__(cls)  # Create an uninitialized instance
         summarizer.model_name = model_directory
-        summarizer.model = model
+        summarizer.model = cast(BartForConditionalGeneration, model)
+        summarizer.tokenizer = tokenizer
+        summarizer.context_builder = context_builder
+        summarizer.stage_a_embedder = context_builder.stage_a_embedder
         summarizer.rouge_metric = evaluate.load("rouge")
 
         return summarizer

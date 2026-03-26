@@ -8,3 +8,4 @@ absl-py==2.1.0
 python-dotenv==1.0.1
 numpy==1.26.4
 sentence-transformers==5.2.3
+streamlit==1.44.1
