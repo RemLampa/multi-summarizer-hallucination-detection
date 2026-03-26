@@ -1,0 +1,11 @@
+Title: Titanic Account 9
+
+Content:
+This passage is based on historical public-domain materials related to the Titanic disaster, including testimonies and documented reports.
+
+APA Citation:
+Fleet, F. (1912). *Lookout Testimony*. British Inquiry, London, UK. Retrieved from https://www.titanicinquiry.org/BOTInq/BOTInq.php
+
+MLA Citation:
+Fleet, F.. *Lookout Testimony*. British Inquiry, 1912, London, UK. https://www.titanicinquiry.org/BOTInq/BOTInq.php
+

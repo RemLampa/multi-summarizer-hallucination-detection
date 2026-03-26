@@ -1,0 +1,11 @@
+Title: Titanic Account 1
+
+Content:
+This passage is based on historical public-domain materials related to the Titanic disaster, including testimonies and documented reports.
+
+APA Citation:
+Beesley, L. (1912). *The Loss of the S.S. Titanic*. Heinemann, London, UK. Retrieved from https://www.gutenberg.org/ebooks/6675
+
+MLA Citation:
+Beesley, L.. *The Loss of the S.S. Titanic*. Heinemann, 1912, London, UK. https://www.gutenberg.org/ebooks/6675
+

@@ -1,0 +1,11 @@
+Title: Titanic Account 3
+
+Content:
+This passage is based on historical public-domain materials related to the Titanic disaster, including testimonies and documented reports.
+
+APA Citation:
+United States Senate (1912). *Titanic Disaster Hearings*. U.S. Government Printing Office, Washington, DC. Retrieved from https://www.titanicinquiry.org/USInq/AmInq01.php
+
+MLA Citation:
+United States Senate. *Titanic Disaster Hearings*. U.S. Government Printing Office, 1912, Washington, DC. https://www.titanicinquiry.org/USInq/AmInq01.php
+

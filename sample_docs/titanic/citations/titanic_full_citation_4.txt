@@ -1,0 +1,11 @@
+Title: Titanic Account 4
+
+Content:
+This passage is based on historical public-domain materials related to the Titanic disaster, including testimonies and documented reports.
+
+APA Citation:
+British Wreck Commissioner (1912). *Report on the Loss of the Titanic*. HMSO, London, UK. Retrieved from https://www.titanicinquiry.org/BOTInq/BOTInq.php
+
+MLA Citation:
+British Wreck Commissioner. *Report on the Loss of the Titanic*. HMSO, 1912, London, UK. https://www.titanicinquiry.org/BOTInq/BOTInq.php
+

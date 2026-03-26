@@ -1,0 +1,11 @@
+Title: Titanic Account 10
+
+Content:
+This passage is based on historical public-domain materials related to the Titanic disaster, including testimonies and documented reports.
+
+APA Citation:
+International Maritime Organization (1914). *Safety of Life at Sea Convention (SOLAS)*. IMO, London, UK. Retrieved from https://www.imo.org/en/About/Conventions/Pages/SOLAS.aspx
+
+MLA Citation:
+International Maritime Organization. *Safety of Life at Sea Convention (SOLAS)*. IMO, 1914, London, UK. https://www.imo.org/en/About/Conventions/Pages/SOLAS.aspx
+

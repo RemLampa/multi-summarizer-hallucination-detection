@@ -1,0 +1,11 @@
+Title: Titanic Account 6
+
+Content:
+This passage is based on historical public-domain materials related to the Titanic disaster, including testimonies and documented reports.
+
+APA Citation:
+Lightoller, C. (1912). *Second Officer Testimony*. British Inquiry, London, UK. Retrieved from https://www.titanicinquiry.org/BOTInq/BOTInq.php
+
+MLA Citation:
+Lightoller, C.. *Second Officer Testimony*. British Inquiry, 1912, London, UK. https://www.titanicinquiry.org/BOTInq/BOTInq.php
+

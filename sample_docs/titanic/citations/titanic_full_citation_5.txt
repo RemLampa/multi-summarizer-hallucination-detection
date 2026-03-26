@@ -1,0 +1,11 @@
+Title: Titanic Account 5
+
+Content:
+This passage is based on historical public-domain materials related to the Titanic disaster, including testimonies and documented reports.
+
+APA Citation:
+Bride, H. (1912). *Wireless Operator Testimony*. U.S. Senate Inquiry, Washington, DC. Retrieved from https://www.titanicinquiry.org/USInq/AmInq01.php
+
+MLA Citation:
+Bride, H.. *Wireless Operator Testimony*. U.S. Senate Inquiry, 1912, Washington, DC. https://www.titanicinquiry.org/USInq/AmInq01.php
+

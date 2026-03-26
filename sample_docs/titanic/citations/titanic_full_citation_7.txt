@@ -1,0 +1,11 @@
+Title: Titanic Account 7
+
+Content:
+This passage is based on historical public-domain materials related to the Titanic disaster, including testimonies and documented reports.
+
+APA Citation:
+Rostron, A. (1912). *Carpathia Captain Report*. British Inquiry, London, UK. Retrieved from https://www.titanicinquiry.org/BOTInq/BOTInq.php
+
+MLA Citation:
+Rostron, A.. *Carpathia Captain Report*. British Inquiry, 1912, London, UK. https://www.titanicinquiry.org/BOTInq/BOTInq.php
+
