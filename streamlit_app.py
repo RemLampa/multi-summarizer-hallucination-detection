@@ -22,10 +22,11 @@ st.write("Summarize up to 10 text files.")
 with st.spinner("Loading summarization models..."):
     preload_models()
 
-model_variant: ModelVariant = st.selectbox(
+model_variant: ModelVariant = st.radio(
     "Model Version",
     options=["v2", "v1"],
     index=0,
+    horizontal=True,
     help="v2 uses context files selection. v1 uses direct file concatenation.",
 )
 
