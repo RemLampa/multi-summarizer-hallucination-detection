@@ -91,6 +91,20 @@ To train with notebooks instead of scripts:
 Use the notebook path when you want an interactive workflow for EDA,
 inspection, or Colab-based training.
 
+## Jupytext
+
+Use these commands to sync the paired `.py` training scripts and `.ipynb`
+notebooks after editing the script versions.
+
+To sync a script into its notebook, run:
+
+```bash
+jupytext --sync scripts/summarization_model_v1.py \
+  --output notebooks/summarization_model_v1.ipynb --update
+jupytext --sync scripts/summarization_model_v2.py \
+  --output notebooks/summarization_model_v2.ipynb --update
+```
+
 ## Miscellaneous Configuration Flags
 
 The training scripts and notebooks also expose a few top-level constants that
