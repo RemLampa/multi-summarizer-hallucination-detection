@@ -29,7 +29,8 @@ The app accepts up to **10** `.txt` files and can switch between `v1` and
 
 ### Training Dataset
 
-- Primary dataset: [`alexfabbri/multi_news`][multi-news]
+- Primary dataset: [`Awesome075/multi_news_parquet`][multi_news_parquet]
+  which is a parquet version of [`alexfabbri/multi_news`][multi-news]
 - Task format: each example contains multiple related news documents and one
   reference summary
 - Usage:
@@ -84,6 +85,7 @@ Default directories used when `.env` values are not set:
 - `notebooks/`: Jupyter training/dev notebooks (via
   [Jupytext](https://jupytext.readthedocs.io/en/latest/))
 
+[multi_news_parquet]: https://huggingface.co/datasets/Awesome075/multi_news_parquet
 [multi-news]: https://huggingface.co/datasets/alexfabbri/multi_news
 [distilbart]: https://huggingface.co/sshleifer/distilbart-cnn-12-6
 [minilm]: https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2
